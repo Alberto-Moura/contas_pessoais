@@ -3,6 +3,7 @@ import re
 import json
 from pathlib import Path
 
+
 def local_transacao(prox_linha):
     '''Analisa se é um local de transação ou não'''
 
@@ -27,7 +28,7 @@ def analisa_parada(linha):
 def indentifica_transacao(linha):
     '''Analisa se é a uma transação e retorna o valor encontrado.'''
 
-    # Padrão para identificar a transação usando regx (exemplo do dado buscado: "COMPRACARTAODEBMC 594461 10,50-")
+    # Padrão para identificar a transação usando regx (exemplo do dado buscado: "COMPRACARTAODEBMC 1234567 10,50-")
     padrao_transacao = r"^(.+?)\s+(\d+|-)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2}-?)"
     match_transacao = re.search(padrao_transacao, linha)
 
@@ -39,12 +40,11 @@ def indentifica_transacao(linha):
 
 def extrair_transacoes(pdf_path, pagina_inicial=0):
     '''Função responsável por abrir o extrato PDF e buscar as informações das transações'''
-    
+
     pagina_final = len(pdfplumber.open(pdf_path).pages)
     nome_arquivo_lido = converter_data(pdf_path.name[:-4])
     transacoes = []
 
-    # Abre o PDF com pdfplumber
     with pdfplumber.open(pdf_path) as pdf:
         for i in range(pagina_inicial, pagina_final):
             pagina = pdf.pages[i]
@@ -58,16 +58,16 @@ def extrair_transacoes(pdf_path, pagina_inicial=0):
                 linha = linhas[idx]
 
                 cancelar_looping = analisa_parada(linha)
-                
+
                 if cancelar_looping:
                     break
-                
+
                 match_transacao = indentifica_transacao(linha)
 
                 if match_transacao:
 
-                    checar_loja = True # gatilho para analisar o nome da loja
-                    
+                    checar_loja = True
+
                     descricao = match_transacao.group(1).strip()
                     documento = match_transacao.group(2)
                     valor_str = match_transacao.group(3)
@@ -76,12 +76,12 @@ def extrair_transacoes(pdf_path, pagina_inicial=0):
                     if valor_str.endswith("-"):
                         valor_str = "-" + valor_str[:-1]
 
-                    # Conversão do valor encontrado para float
                     valor = float(valor_str.replace(".", "").replace(",", "."))
-                    
-                    # Definindo os tipos de transações mais comuns
+
                     if "PIX" in descricao.upper():
                         tipo = "pix"
+                    elif "SAQUE" in descricao.upper():
+                        tipo = "saque"
                     elif "CARTAO" in descricao.upper() or "CARTÃO" in descricao.upper():
                         tipo = "cartão"
                     elif "BOLETO" in descricao.upper():
@@ -97,22 +97,22 @@ def extrair_transacoes(pdf_path, pagina_inicial=0):
                         tipo = "transferência"
                     else:
                         tipo = "outro"
-                    
+
                     # Inicializa o campo de local com vazio
                     loja = ""
-                    
+
                     # Verifica se a próxima linha contém o local. (exemplo deo dado buscado: "12/12CANTINA")
                     if idx + 1 < len(linhas):
                         prox_linha = linhas[idx + 1]
                         match_local = local_transacao(prox_linha)
                         if match_local:
                             loja = match_local.group(1)
-                            idx += 1  # Pula a linha de local, já que ela foi consumida
-                        elif checar_loja == False:
-                            idx += 1 # Pula a linha de local, já que ela foi consumida
+                            idx += 1
+                        elif checar_loja:
+                            idx += 1
                             loja = ""
                         else:
-                            idx += 1 # Pula a linha de local, já que ela foi consumida
+                            idx += 1
                             transacao = indentifica_transacao(prox_linha)
                             if transacao:
                                 loja = ""
@@ -167,7 +167,7 @@ def converter_data(data_str):
         "nov": "11",
         "dez": "12"
     }
-    
+
     parte_mes = data_str[:3]
     parte_ano = data_str[3:]
     mes_num = meses[parte_mes.lower()]
@@ -242,13 +242,13 @@ if __name__ == "__main__":
         print(f"Analisando o arquivo {pdf_file.name}...")
         transacoes = extrair_transacoes(pdf_file)
         resultado["movimentacoes"].extend(transacoes)
-    
+
     with open("arquivos_analisados.json", "w", encoding="utf-8") as f:
         json.dump({"analisados": sorted(str(item) for item in arquivos_analisados_set)}, f, indent=2, ensure_ascii=False)
 
     with open("extrato.json", "w", encoding="utf-8") as f:
-            json.dump(resultado, f, indent=2, ensure_ascii=False)
-    
+        json.dump(resultado, f, indent=2, ensure_ascii=False)
+
     print("Arquivo extrato.json gerado com sucesso!")
 
     carregar_bd()
